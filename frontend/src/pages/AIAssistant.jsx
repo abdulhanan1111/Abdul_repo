@@ -20,14 +20,30 @@ const AIAssistant = () => {
     setLoading(true);
 
     try {
-      const response = await axios.post(`${API_URL}/ai/chat`, { 
-        query: userMessage.text,
-        history: messages 
-      });
-      setMessages(prev => [...prev, { role: 'ai', text: response.data.response }]);
+      const historyForPuter = [...messages, userMessage].map((m) => ({
+        role: m.role === 'ai' ? 'assistant' : 'user',
+        content: m.text,
+      }));
+
+      if (typeof window !== 'undefined' && window.puter?.ai?.chat) {
+        const aiText = await window.puter.ai.chat(historyForPuter);
+        setMessages((prev) => [...prev, { role: 'ai', text: aiText }]);
+      } else {
+        const response = await axios.post(`${API_URL}/ai/chat`, {
+          query: userMessage.text,
+          history: messages,
+        });
+        setMessages((prev) => [...prev, { role: 'ai', text: response.data.response }]);
+      }
     } catch (error) {
       console.error('AI Error', error);
-      setMessages(prev => [...prev, { role: 'ai', text: 'Sorry, I encountered an error connecting to the backend. Please ensure the backend is running and the GEMINI_API_KEY is configured.' }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'ai',
+          text: 'Sorry, I encountered an error connecting to the AI service. Please ensure the frontend can load Puter.js or that the backend is running.',
+        },
+      ]);
     } finally {
       setLoading(false);
     }
