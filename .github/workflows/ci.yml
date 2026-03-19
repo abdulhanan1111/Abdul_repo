@@ -91,21 +91,21 @@ jobs:
             if [ -f "$APP_DIR/frontend/package.json" ]; then
               if [ ! -f "/etc/systemd/system/logistics-frontend.service" ]; then
                 sudo tee /etc/systemd/system/logistics-frontend.service > /dev/null << 'EOF'
-[Unit]
-Description=Logistics Frontend (Vite Dev Server)
-After=network.target
+                [Unit]
+                Description=Logistics Frontend (Vite Dev Server)
+                After=network.target
 
-[Service]
-User=ubuntu
-WorkingDirectory=/home/ubuntu/Logistics_Project_Transfer/frontend
-ExecStart=/usr/bin/npm run dev -- --host 0.0.0.0 --port 5173
-Restart=always
-RestartSec=3
-Environment=NODE_ENV=development
+                [Service]
+                User=ubuntu
+                WorkingDirectory=/home/ubuntu/Logistics_Project_Transfer/frontend
+                ExecStart=/usr/bin/npm run dev -- --host 0.0.0.0 --port 5173
+                Restart=always
+                RestartSec=3
+                Environment=NODE_ENV=development
 
-[Install]
-WantedBy=multi-user.target
-EOF
+                [Install]
+                WantedBy=multi-user.target
+                EOF
                 sudo systemctl daemon-reload
                 sudo systemctl enable logistics-frontend
               fi
@@ -114,5 +114,3 @@ EOF
               npm ci
               sudo systemctl restart logistics-frontend
             fi
-
-# sync
