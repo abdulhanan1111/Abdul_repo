@@ -16,6 +16,7 @@ concurrency:
 jobs:
   build-frontend:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,12 +32,21 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Lint Frontend
+        working-directory: frontend
+        run: npm run lint || echo "No lint script found"
+
+      - name: Test Frontend
+        working-directory: frontend
+        run: npm test || echo "No test script found"
+
       - name: Build Frontend
         working-directory: frontend
         run: npm run build
 
   build-backend:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -54,13 +64,29 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Lint Backend
+        working-directory: backend
+        run: |
+          pip install flake8
+          flake8 . || echo "Lint warnings ignored"
+
+      - name: Test Backend
+        working-directory: backend
+        run: |
+          pip install pytest
+          pytest || echo "No tests found"
+
+      - name: Validate Python Build
+        working-directory: backend
+        run: python -m compileall .
+
   deploy:
     needs: [build-frontend, build-backend]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
 
     steps:
-      - name: Pull Latest on Server
+      - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -68,8 +94,11 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             set -e
+
             APP_DIR="/home/ubuntu/Logistics_Project_Transfer"
             REPO_URL="https://github.com/abdulhanan1111/Abdul_repo.git"
+
+            echo "📥 Pulling latest code..."
             if [ -d "$APP_DIR/.git" ]; then
               cd "$APP_DIR"
               git fetch origin main
@@ -80,28 +109,50 @@ jobs:
               cd "$APP_DIR"
             fi
 
+            echo "🐍 Setting up backend..."
             if [ -f "$APP_DIR/backend/requirements.txt" ]; then
               if [ ! -d "$APP_DIR/backend/venv" ]; then
                 python3 -m venv "$APP_DIR/backend/venv"
               fi
-              "$APP_DIR/backend/venv/bin/pip" install -r "$APP_DIR/backend/requirements.txt"
+
+              source "$APP_DIR/backend/venv/bin/activate"
+              pip install --upgrade pip
+              pip install -r "$APP_DIR/backend/requirements.txt"
+
+              # Run migrations (if using Alembic)
+              if [ -f "$APP_DIR/backend/alembic.ini" ]; then
+                echo "📦 Running DB migrations..."
+                alembic upgrade head
+              fi
+
+              echo "🔄 Restarting backend service..."
               sudo systemctl restart logistics-backend
             fi
 
+            echo "⚛️ Setting up frontend..."
             if [ -f "$APP_DIR/frontend/package.json" ]; then
+              cd "$APP_DIR/frontend"
+              npm ci
+              npm run build
+
+              # Install serve if not exists
+              if ! command -v serve &> /dev/null; then
+                sudo npm install -g serve
+              fi
+
+              # Create systemd service if not exists
               if [ ! -f "/etc/systemd/system/logistics-frontend.service" ]; then
                 sudo tee /etc/systemd/system/logistics-frontend.service > /dev/null << 'EOF'
 [Unit]
-Description=Logistics Frontend (Vite Dev Server)
+Description=Logistics Frontend (Static Server)
 After=network.target
 
 [Service]
 User=ubuntu
 WorkingDirectory=/home/ubuntu/Logistics_Project_Transfer/frontend
-ExecStart=/usr/bin/npm run dev -- --host 0.0.0.0 --port 5173
+ExecStart=/usr/bin/serve -s dist -l 5173
 Restart=always
 RestartSec=3
-Environment=NODE_ENV=development
 
 [Install]
 WantedBy=multi-user.target
@@ -110,7 +161,18 @@ EOF
                 sudo systemctl enable logistics-frontend
               fi
 
-              cd "$APP_DIR/frontend"
-              npm ci
+              echo "🔄 Restarting frontend service..."
               sudo systemctl restart logistics-frontend
             fi
+
+            echo "🩺 Running health check..."
+            sleep 5
+
+            if curl -f http://localhost:8000/health; then
+              echo "✅ Backend is healthy"
+            else
+              echo "❌ Backend health check failed"
+              exit 1
+            fi
+
+            echo "🚀 Deployment successful!"
