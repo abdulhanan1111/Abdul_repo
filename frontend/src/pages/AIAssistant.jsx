@@ -26,7 +26,14 @@ const AIAssistant = () => {
       }));
 
       if (typeof window !== 'undefined' && window.puter?.ai?.chat) {
-        const aiText = await window.puter.ai.chat(historyForPuter);
+        const aiResult = await window.puter.ai.chat(historyForPuter);
+        const aiText =
+          typeof aiResult === 'string'
+            ? aiResult
+            : aiResult?.message?.content ??
+              aiResult?.message ??
+              aiResult?.text ??
+              JSON.stringify(aiResult);
         setMessages((prev) => [...prev, { role: 'ai', text: aiText }]);
       } else {
         const response = await axios.post(`${API_URL}/ai/chat`, {
