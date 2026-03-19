@@ -114,3 +114,5 @@ EOF
               npm ci
               sudo systemctl restart logistics-frontend
             fi
+
+# sync
